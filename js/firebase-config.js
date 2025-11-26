@@ -1,12 +1,12 @@
 // Firebase Configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyD_zzKFzLqf0r_EbXkQSa2QUuyQHwEY2gA",
-    authDomain: "kimi-eaea2.firebaseapp.com",
-    projectId: "kimi-eaea2",
-    storageBucket: "kimi-eaea2.firebasestorage.app",
-    messagingSenderId: "686260860882",
-    appId: "1:686260860882:web:f75df0cf1709a8890fba0b",
-    measurementId: "G-PXHPHKE9YV"
+  apiKey: "AIzaSyD_zzKFzLqf0r_EbXkQSa2QUuyQHwEY2gA",
+  authDomain: "kimi-eaea2.firebaseapp.com",
+  projectId: "kimi-eaea2",
+  storageBucket: "kimi-eaea2.firebasestorage.app",
+  messagingSenderId: "686260860882",
+  appId: "1:686260860882:web:f75df0cf1709a8890fba0b",
+  measurementId: "G-PXHPHKE9YV"
 };
 
 // Initialize Firebase
