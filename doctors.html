@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الأطباء - نظام إدارة الانتظار</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .doctors-bg { 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .doctor-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .doctor-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .arabic-number { font-family: 'Cairo', sans-serif; }
+        .request-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(5px);
+        }
+        .attendance-table {
+            background: rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+<body class="doctors-bg text-white min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-gray-800">
+            <div class="text-center mb-6">
+                <i class="fas fa-user-md text-4xl text-blue-600 mb-4"></i>
+                <h2 class="text-2xl font-bold">دخول الأطباء</h2>
+                <p class="text-gray-600 mt-2">أدخل بياناتك للدخول إلى حسابك</p>
+            </div>
+            <form id="doctorLoginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">البريد الإلكتروني</label>
+                    <input type="email" id="doctorEmail" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="your@email.com">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">كلمة المرور</label>
+                    <input type="password" id="doctorPassword" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="أدخل كلمة المرور">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                    <i class="fas fa-sign-in-alt ml-2"></i>دخول
+                </button>
+            </form>
+            <div id="loginError" class="mt-4 text-red-600 text-center hidden">بيانات الدخول غير صحيحة</div>
+        </div>
+    </div>
+
+    <!-- Main Interface -->
+    <div id="mainInterface" class="hidden">
+        <!-- Header -->
+        <header class="bg-black bg-opacity-50 p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <i class="fas fa-user-md text-2xl text-blue-400"></i>
+                    <div>
+                        <h1 class="text-xl font-bold">بوابة الأطباء</h1>
+                        <p id="doctorWelcome" class="text-sm text-gray-300">مرحباً دكتور</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="currentTime" class="text-lg font-semibold"></span>
+                    <button onclick="logoutDoctor()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-sign-out-alt ml-2"></i>خروج
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="container mx-auto px-4 mt-6">
+            <div class="flex flex-wrap gap-2">
+                <button onclick="switchTab('dashboard')" class="tab-button bg-blue-600 px-6 py-3 rounded-lg font-semibold transition-all" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt ml-2"></i>لوحة التحكم
+                </button>
+                <button onclick="switchTab('profile')" class="tab-button bg-gray-600 hover:bg-blue-600 px-6 py-3 rounded-lg font-semibold transition-all" data-tab="profile">
+                    <i class="fas fa-user ml-2"></i>الملف الشخصي
+                </button>
+                <button onclick="switchTab('requests')" class="tab-button bg-gray-600 hover:bg-blue-600 px-6 py-3 rounded-lg font-semibold transition-all" data-tab="requests">
+                    <i class="fas fa-clipboard-list ml-2"></i>الطلبات
+                </button>
+                <button onclick="switchTab('attendance')" class="tab-button bg-gray-600 hover:bg-blue-600 px-6 py-3 rounded-lg font-semibold transition-all" data-tab="attendance">
+                    <i class="fas fa-calendar-check ml-2"></i>الحضور والانصراف
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 mt-8">
+            <!-- Dashboard Tab -->
+            <div id="dashboard-tab" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Doctor Info -->
+                    <div class="doctor-card rounded-xl p-6">
+                        <div class="text-center mb-4">
+                            <div class="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fas fa-user-md text-3xl"></i>
+                            </div>
+                            <h3 id="doctorName" class="text-xl font-bold">د. اسم الطبيب</h3>
+                            <p id="doctorSpecialty" class="text-gray-300">التخصص</p>
+                            <p id="doctorClinic" class="text-sm text-gray-400">العيادة</p>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <div class="flex justify-between">
+                                <span>الحالة:</span>
+                                <span id="doctorStatus" class="text-green-400">نشط</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الشيفت:</span>
+                                <span id="doctorShift">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>رصيد الإجازات:</span>
+                                <span id="leaveBalance" class="text-blue-400">21 يوم</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Stats -->
+                    <div class="doctor-card rounded-xl p-6">
+                        <h3 class="text-lg font-bold mb-4">إحصائيات سريعة</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between">
+                                <span>المرضى اليوم:</span>
+                                <span id="todayPatients" class="arabic-number font-bold text-yellow-400">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الحضور هذا الشهر:</span>
+                                <span id="monthAttendance" class="arabic-number font-bold text-green-400">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الغياب:</span>
+                                <span id="monthAbsence" class="arabic-number font-bold text-red-400">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الطلبات المعلقة:</span>
+                                <span id="pendingRequests" class="arabic-number font-bold text-orange-400">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="doctor-card rounded-xl p-6">
+                        <h3 class="text-lg font-bold mb-4">إجراءات سريعة</h3>
+                        <div class="space-y-2">
+                            <button onclick="markAttendance()" class="w-full bg-green-600 hover:bg-green-700 p-2 rounded-lg transition-colors text-sm">
+                                <i class="fas fa-check ml-2"></i>تسجيل الحضور
+                            </button>
+                            <button onclick="markDeparture()" class="w-full bg-red-600 hover:bg-red-700 p-2 rounded-lg transition-colors text-sm">
+                                <i class="fas fa-sign-out-alt ml-2"></i>تسجيل الانصراف
+                            </button>
+                            <button onclick="showRequestModal()" class="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded-lg transition-colors text-sm">
+                                <i class="fas fa-plus ml-2"></i>طلب جديد
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="doctor-card rounded-xl p-6 mt-6">
+                    <h3 class="text-lg font-bold mb-4">آخر النشاطات</h3>
+                    <div id="recentActivity" class="space-y-2">
+                        <!-- Recent activities will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Tab -->
+            <div id="profile-tab" class="tab-content hidden">
+                <div class="doctor-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">الملف الشخصي</h3>
+                    <form id="profileForm">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">الاسم الكامل</label>
+                                <input type="text" id="profileName" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">التخصص</label>
+                                <input type="text" id="profileSpecialty" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">رقم التليفون</label>
+                                <input type="tel" id="profilePhone" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">الرقم القومي</label>
+                                <input type="text" id="profileNationalId" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">البريد الإلكتروني</label>
+                                <input type="email" id="profileEmail" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">العيادة</label>
+                                <select id="profileClinic" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    <option value="">اختر العيادة...</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex space-x-4">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-save ml-2"></i>حفظ التغييرات
+                            </button>
+                            <button type="button" onclick="changePassword()" class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-key ml-2"></i>تغيير كلمة المرور
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Requests Tab -->
+            <div id="requests-tab" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- New Request -->
+                    <div class="doctor-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">تقديم طلب جديد</h3>
+                        <form id="requestForm">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-semibold mb-2">نوع الطلب</label>
+                                    <select id="requestType" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                        <option value="">اختر نوع الطلب...</option>
+                                        <option value="regular_leave">إجازة اعتيادية</option>
+                                        <option value="casual_leave">إجازة عارضة</option>
+                                        <option value="rest_compensation">بدل راحة</option>
+                                        <option value="mission">مأمورية</option>
+                                        <option value="morning_permission">إذن صباحي</option>
+                                        <option value="evening_permission">إذن مسائي</option>
+                                        <option value="training_mission">مأمورية تدريب</option>
+                                        <option value="sick_leave">إجازة مرضى</option>
+                                        <option value="health_insurance">تأمين صحي</option>
+                                        <option value="route_permit">خط سير</option>
+                                        <option value="other">أخرى</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-semibold mb-2">من تاريخ</label>
+                                        <input type="date" id="requestFromDate" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold mb-2">إلى تاريخ</label>
+                                        <input type="date" id="requestToDate" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-semibold mb-2">القائم بالعمل</label>
+                                    <input type="text" id="requestReplacement" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="اسم من سيقوم بالعمل بدلاً منك">
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-semibold mb-2">السبب/الملاحظات</label>
+                                    <textarea id="requestNotes" rows="3" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="اشرح سبب الطلب..."></textarea>
+                                </div>
+                                
+                                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-semibold transition-colors">
+                                    <i class="fas fa-paper-plane ml-2"></i>إرسال الطلب
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Request History -->
+                    <div class="doctor-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">سجل الطلبات</h3>
+                        <div id="requestHistory" class="space-y-3 max-h-96 overflow-y-auto">
+                            <!-- Request history will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Tab -->
+            <div id="attendance-tab" class="tab-content hidden">
+                <div class="doctor-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">سجل الحضور والانصراف</h3>
+                    <div class="overflow-x-auto">
+                        <table class="attendance-table w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-white border-opacity-30">
+                                    <th class="text-right p-3">التاريخ</th>
+                                    <th class="text-right p-3">الحضور</th>
+                                    <th class="text-right p-3">الانصراف</th>
+                                    <th class="text-right p-3">المدة</th>
+                                    <th class="text-right p-3">الحالة</th>
+                                    <th class="text-right p-3">الملاحظات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendanceTableBody">
+                                <!-- Attendance records will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Request Modal -->
+    <div id="requestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 text-gray-800">
+            <h3 class="text-xl font-bold mb-4">تقديم طلب جديد</h3>
+            <!-- Modal content would go here -->
+            <button onclick="closeRequestModal()" class="w-full bg-gray-600 hover:bg-gray-700 p-3 rounded-lg transition-colors">
+                إغلاق
+            </button>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/doctors.js"></script>
+</body>
+</html>

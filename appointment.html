@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>حجز الموعد - نظام إدارة الانتظار</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .appointment-bg { 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .form-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .time-slot {
+            transition: all 0.3s ease;
+        }
+        .time-slot:hover {
+            background: rgba(59, 130, 246, 0.2);
+        }
+        .time-slot.selected {
+            background: #3b82f6;
+        }
+        .time-slot.booked {
+            background: #ef4444;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .arabic-number { font-family: 'Cairo', sans-serif; }
+        .calendar-day {
+            transition: all 0.3s ease;
+        }
+        .calendar-day:hover {
+            background: rgba(59, 130, 246, 0.2);
+        }
+        .calendar-day.selected {
+            background: #3b82f6;
+        }
+        .calendar-day.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="appointment-bg text-white min-h-screen">
+    <!-- Header -->
+    <header class="bg-black bg-opacity-50 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <i class="fas fa-calendar-alt text-2xl text-blue-400"></i>
+                <h1 class="text-xl font-bold">حجز الموعد</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="index.html" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
+                    <i class="fas fa-home ml-2"></i>الرئيسية
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold mb-4">احجز موعدك بسهولة</h2>
+                <p class="text-gray-300">اختر العيادة والتاريخ والوقت المناسب لك</p>
+            </div>
+
+            <!-- Booking Form -->
+            <div class="form-card rounded-xl p-8">
+                <form id="appointmentForm">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Personal Information -->
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-bold mb-4 text-blue-400">البيانات الشخصية</h3>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">الاسم الكامل *</label>
+                                <input type="text" id="clientName" required class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="أدخل اسمك الكامل">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">الرقم القومي *</label>
+                                <input type="text" id="nationalId" required class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="أدخل رقمك القومي">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">رقم التليفون *</label>
+                                <input type="tel" id="phoneNumber" required class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="01xxxxxxxxx">
+                            </div>
+                        </div>
+
+                        <!-- Appointment Details -->
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-bold mb-4 text-green-400">تفاصيل الحجز</h3>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">العيادة *</label>
+                                <select id="clinicSelect" required class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    <option value="">اختر العيادة...</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">سبب الزيارة</label>
+                                <textarea id="visitReason" rows="3" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="اشرح سبب الزيارة..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date Selection -->
+                    <div class="mt-8">
+                        <h3 class="text-xl font-bold mb-4 text-purple-400">اختيار التاريخ</h3>
+                        <div id="calendar" class="grid grid-cols-7 gap-2 mb-4">
+                            <!-- Calendar will be generated here -->
+                        </div>
+                        <input type="hidden" id="selectedDate" required>
+                    </div>
+
+                    <!-- Time Selection -->
+                    <div class="mt-8">
+                        <h3 class="text-xl font-bold mb-4 text-yellow-400">اختيار الوقت</h3>
+                        <div class="mb-4">
+                            <div class="flex space-x-4 mb-4">
+                                <button type="button" onclick="selectShift('morning')" id="morningShift" class="flex-1 p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg hover:bg-blue-600 transition-colors">
+                                    <i class="fas fa-sun mr-2"></i>الشفت الصباحي
+                                    <div class="text-sm text-gray-300">8 ص - 2 م</div>
+                                </button>
+                                <button type="button" onclick="selectShift('evening')" id="eveningShift" class="flex-1 p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg hover:bg-blue-600 transition-colors">
+                                    <i class="fas fa-moon mr-2"></i>الشفت المسائي
+                                    <div class="text-sm text-gray-300">2 م - 8 م</div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="timeSlots" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            <!-- Time slots will be generated here -->
+                        </div>
+                        <input type="hidden" id="selectedTime" required>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="mt-8 text-center">
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 px-8 py-4 rounded-lg text-lg font-bold transition-colors">
+                            <i class="fas fa-calendar-check ml-2"></i>حجز الموعد
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- My Appointments -->
+            <div class="mt-8">
+                <div class="form-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-history text-orange-400 ml-2"></i>
+                        مواعيدي
+                    </h3>
+                    <div id="myAppointments" class="space-y-3">
+                        <!-- User appointments will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-gray-800 text-center">
+            <i class="fas fa-check-circle text-6xl text-green-500 mb-4"></i>
+            <h2 class="text-2xl font-bold mb-4 text-green-600">تم الحجز بنجاح!</h2>
+            <p class="text-lg mb-4">تم حجز موعدك بنجاح</p>
+            <div id="appointmentDetails" class="bg-gray-100 rounded-lg p-4 mb-6 text-sm">
+                <!-- Appointment details will be shown here -->
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="closeSuccessModal()" class="flex-1 bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors">
+                    حسناً
+                </button>
+                <button onclick="printAppointment()" class="flex-1 bg-green-600 text-white p-3 rounded-lg hover:bg-green-700 transition-colors">
+                    <i class="fas fa-print ml-2"></i>طباعة
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-40">
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-400 mb-4"></i>
+            <p class="text-xl font-semibold">جاري الحجز...</p>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/appointment.js"></script>
+</body>
+</html>

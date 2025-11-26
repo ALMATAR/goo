@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>صفحة العميل - نظام إدارة الانتظار</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .client-bg { 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .clinic-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .clinic-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .number-display {
+            font-size: 3rem;
+            font-weight: 900;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .client-number {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .arabic-number { font-family: 'Cairo', sans-serif; }
+        .notification-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .waiting-animation {
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body class="client-bg text-white min-h-screen">
+    <!-- Header -->
+    <header class="bg-black bg-opacity-50 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <i class="fas fa-mobile-alt text-2xl text-blue-400"></i>
+                <h1 class="text-xl font-bold">صفحة العميل</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="currentTime" class="text-lg font-semibold"></span>
+                <button onclick="toggleNotifications()" class="relative bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
+                    <i class="fas fa-bell"></i>
+                    <span id="notificationCount" class="hidden absolute -top-2 -right-2 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Clinic Selection -->
+        <div id="clinicSelection" class="mb-8">
+            <h2 class="text-3xl font-bold text-center mb-6">اختر العيادة</h2>
+            <div id="clinicsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Clinics will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Client Interface -->
+        <div id="clientInterface" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Current Status -->
+                <div class="lg:col-span-2">
+                    <div class="clinic-card rounded-xl p-8 text-center mb-6">
+                        <div class="mb-6">
+                            <h2 id="selectedClinicName" class="text-2xl font-bold mb-2">اسم العيادة</h2>
+                            <p class="text-gray-300">الرقم الحالي في العيادة</p>
+                        </div>
+                        
+                        <div class="number-display text-yellow-400 mb-6">
+                            <span id="currentClinicNumber" class="arabic-number">0</span>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-lg mb-2">رقم تذكرتك:</p>
+                            <div class="client-number text-blue-400">
+                                <span id="myTicketNumber" class="arabic-number">-</span>
+                            </div>
+                        </div>
+                        
+                        <div id="waitingStatus" class="hidden">
+                            <div class="waiting-animation text-green-400 mb-4">
+                                <i class="fas fa-clock text-4xl"></i>
+                            </div>
+                            <p class="text-lg">يرجى الانتظار... دورك قريباً</p>
+                        </div>
+                        
+                        <div id="yourTurnStatus" class="hidden">
+                            <div class="text-red-400 mb-4">
+                                <i class="fas fa-bell text-4xl notification-badge"></i>
+                            </div>
+                            <p class="text-xl font-bold">دورك الآن! الرجاء التوجه إلى العيادة</p>
+                        </div>
+                    </div>
+
+                    <!-- Your Number Input -->
+                    <div class="clinic-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">إدخال رقم التذكرة</h3>
+                        <div class="flex space-x-4">
+                            <input type="number" id="ticketInput" class="flex-1 p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="أدخل رقم تذكرتك">
+                            <button onclick="setMyTicketNumber()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-check ml-2"></i>تأكيد
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Side Panel -->
+                <div class="space-y-6">
+                    <!-- Queue Status -->
+                    <div class="clinic-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-info-circle text-blue-400 ml-2"></i>
+                            معلومات الطابور
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between">
+                                <span>العدد الكلي:</span>
+                                <span id="totalQueue" class="arabic-number font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الرقم الحالي:</span>
+                                <span id="currentDisplay" class="arabic-number font-bold text-yellow-400">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>العميلين المتبقيين:</span>
+                                <span id="remainingClients" class="arabic-number font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>الوقت التقريبي:</span>
+                                <span id="estimatedTime" class="font-bold">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contact Information -->
+                    <div class="clinic-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-address-book text-green-400 ml-2"></i>
+                            بيانات التواصل
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">البريد الإلكتروني (اختياري)</label>
+                                <input type="email" id="clientEmail" class="w-full p-2 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="your@email.com">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">رقم التليفون (اختياري)</label>
+                                <input type="tel" id="clientPhone" class="w-full p-2 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="01xxxxxxxxx">
+                            </div>
+                            <button onclick="saveContactInfo()" class="w-full bg-green-600 hover:bg-green-700 p-2 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-save ml-2"></i>حفظ البيانات
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Feedback -->
+                    <div class="clinic-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-comment text-purple-400 ml-2"></i>
+                            الشكاوى والاقتراحات
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">النوع</label>
+                                <select id="feedbackType" class="w-full p-2 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    <option value="complaint">شكوى</option>
+                                    <option value="suggestion">اقتراح</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">النص (مطلوب)</label>
+                                <textarea id="feedbackText" rows="3" class="w-full p-2 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="اكتب شكواك أو اقتراحك هنا..." maxlength="140"></textarea>
+                                <div class="text-xs text-gray-400 mt-1">
+                                    <span id="charCount">0</span>/140 حرف
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">ملاحظات إضافية (اختياري)</label>
+                                <textarea id="feedbackNotes" rows="2" class="w-full p-2 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="أي ملاحظات إضافية..."></textarea>
+                            </div>
+                            <button onclick="submitFeedback()" class="w-full bg-purple-600 hover:bg-purple-700 p-2 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-paper-plane ml-2"></i>إرسال
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Notifications Panel -->
+                    <div id="notificationsPanel" class="hidden clinic-card rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-bell text-yellow-400 ml-2"></i>
+                            التنبيهات
+                        </h3>
+                        <div id="notificationsList" class="space-y-2 max-h-48 overflow-y-auto">
+                            <!-- Notifications will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Popup -->
+    <div id="notificationPopup" class="hidden fixed top-4 right-4 bg-green-600 text-white p-4 rounded-lg shadow-lg z-50">
+        <div class="flex items-center">
+            <i class="fas fa-bell text-xl ml-2"></i>
+            <span id="notificationMessage"></span>
+        </div>
+    </div>
+
+    <!-- Your Turn Alert -->
+    <div id="yourTurnAlert" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-gray-800 text-center">
+            <i class="fas fa-bell text-6xl text-red-500 mb-4 notification-badge"></i>
+            <h2 class="text-3xl font-bold mb-4 text-red-600">دورك الآن!</h2>
+            <p class="text-lg mb-6">الرجاء التوجه فوراً إلى العيادة</p>
+            <div class="text-2xl font-bold mb-6">
+                <span class="text-blue-600">رقمك:</span>
+                <span id="alertTicketNumber" class="arabic-number">0</span>
+            </div>
+            <button onclick="closeYourTurnAlert()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
+                فهمت
+            </button>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/client.js"></script>
+</body>
+</html>

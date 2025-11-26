@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة الإدارة - نظام إدارة الانتظار</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .admin-bg { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
+        .glass-effect { backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.1); }
+        .tab-active { background: #3b82f6; color: white; }
+        .tab-inactive { background: rgba(255, 255, 255, 0.1); color: #e2e8f0; }
+        .arabic-number { font-family: 'Cairo', sans-serif; }
+    </style>
+</head>
+<body class="admin-bg text-white min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-gray-800">
+            <div class="text-center mb-6">
+                <i class="fas fa-lock text-4xl text-blue-600 mb-4"></i>
+                <h2 class="text-2xl font-bold">تسجيل الدخول - لوحة الإدارة</h2>
+            </div>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">كلمة المرور</label>
+                    <input type="password" id="adminPassword" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="أدخل كلمة المرور">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                    <i class="fas fa-sign-in-alt ml-2"></i>دخول
+                </button>
+            </form>
+            <div id="loginError" class="mt-4 text-red-600 text-center hidden">كلمة المرور غير صحيحة</div>
+        </div>
+    </div>
+
+    <!-- Main Admin Interface -->
+    <div id="adminInterface" class="hidden">
+        <!-- Header -->
+        <header class="bg-black bg-opacity-30 p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <i class="fas fa-cogs text-3xl text-blue-400"></i>
+                    <h1 class="text-2xl font-bold">لوحة الإدارة</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="currentTime" class="text-lg font-semibold"></span>
+                    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-sign-out-alt ml-2"></i>خروج
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="container mx-auto px-4 mt-6">
+            <div class="flex flex-wrap gap-2">
+                <button onclick="switchTab('settings')" class="tab-button tab-active px-6 py-3 rounded-lg font-semibold transition-all" data-tab="settings">
+                    <i class="fas fa-cog ml-2"></i>الإعدادات
+                </button>
+                <button onclick="switchTab('clinics')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="clinics">
+                    <i class="fas fa-hospital ml-2"></i>العيادات
+                </button>
+                <button onclick="switchTab('audio')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="audio">
+                    <i class="fas fa-volume-up ml-2"></i>الصوتيات
+                </button>
+                <button onclick="switchTab('doctors')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="doctors">
+                    <i class="fas fa-user-md ml-2"></i>الأطباء
+                </button>
+                <button onclick="switchTab('appointments')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="appointments">
+                    <i class="fas fa-calendar ml-2"></i>المواعيد
+                </button>
+                <button onclick="switchTab('notifications')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="notifications">
+                    <i class="fas fa-bell ml-2"></i>التنبيهات
+                </button>
+                <button onclick="switchTab('emergency')" class="tab-button tab-inactive px-6 py-3 rounded-lg font-semibold transition-all" data-tab="emergency">
+                    <i class="fas fa-exclamation-triangle ml-2"></i>الطوارئ
+                </button>
+            </div>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="container mx-auto px-4 mt-8">
+            <!-- Settings Tab -->
+            <div id="settings-tab" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Basic Settings -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-info-circle text-blue-400 ml-2"></i>البيانات الأساسية
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">اسم المركز</label>
+                                <input type="text" id="centerName" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="اسم المركز الطبي">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">كلمة سر صفحة العرض</label>
+                                <input type="password" id="displayPassword" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="كلمة سر صفحة العرض">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">مدة عرض التنبيه (ثواني)</label>
+                                <input type="number" id="alertDuration" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Display Settings -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-desktop text-green-400 ml-2"></i>إعدادات العرض
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">محتوى الشريط الإخباري</label>
+                                <textarea id="newsTicker" rows="3" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="أهلاً وسهلاً بكم في مركزنا الطبي..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">سرعة الشريط (مللي ثانية)</label>
+                                <input type="number" id="tickerSpeed" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="50">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">عدد الشاشات</label>
+                                <select id="screenCount" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                    <option value="1">شاشة واحدة</option>
+                                    <option value="2">شاشتان</option>
+                                    <option value="3">ثلاث شاشات</option>
+                                    <option value="4">أربع شاشات</option>
+                                    <option value="5">خمس شاشات</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audio Settings -->
+                <div class="glass-effect rounded-xl p-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-volume-up text-purple-400 ml-2"></i>إعدادات الصوت
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">مسار ملفات النداء (GitHub)</label>
+                            <input type="text" id="audioPath" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="https://raw.githubusercontent.com/user/repo/main/audio/">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">مسار ملفات الفيديو (GitHub)</label>
+                            <input type="text" id="videoPath" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="https://raw.githubusercontent.com/user/repo/main/media/">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">مسار الملفات الجاهزة (GitHub)</label>
+                            <input type="text" id="instantPath" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400" placeholder="https://raw.githubusercontent.com/user/repo/main/instant/">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">سرعة نطق النداء</label>
+                            <select id="speechSpeed" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                                <option value="0.5">بطيئة جداً</option>
+                                <option value="0.8">بطيئة</option>
+                                <option value="1" selected>طبيعية</option>
+                                <option value="1.2">سريعة</option>
+                                <option value="1.5">سريعة جداً</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center mt-6">
+                    <button onclick="saveSettings()" class="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-save ml-2"></i>حفظ الإعدادات
+                    </button>
+                </div>
+            </div>
+
+            <!-- Clinics Tab -->
+            <div id="clinics-tab" class="tab-content hidden">
+                <div class="glass-effect rounded-xl p-6 mb-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-plus-circle text-green-400 ml-2"></i>إضافة عيادة جديدة
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <input type="text" id="newClinicName" placeholder="اسم العيادة" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                        <input type="number" id="newClinicNumber" placeholder="رقم العيادة" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                        <select id="newClinicScreen" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                            <option value="">اختر الشاشة</option>
+                            <option value="1">الشاشة 1</option>
+                            <option value="2">الشاشة 2</option>
+                            <option value="3">الشاشة 3</option>
+                            <option value="4">الشاشة 4</option>
+                            <option value="5">الشاشة 5</option>
+                        </select>
+                        <input type="password" id="newClinicPassword" placeholder="كلمة سر التحكم" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg focus:outline-none focus:border-blue-400">
+                        <button onclick="addClinic()" class="bg-green-600 hover:bg-green-700 p-3 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-plus ml-2"></i>إضافة
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-effect rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-list text-blue-400 ml-2"></i>قائمة العيادات
+                    </h3>
+                    <div id="clinicsList" class="space-y-4">
+                        <!-- Clinics will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Tab -->
+            <div id="audio-tab" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Record Audio -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-microphone text-red-400 ml-2"></i>تسجيل صوتي
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">المدة (10 ثواني كحد أقصى)</label>
+                                <input type="number" id="recordDuration" max="10" min="1" value="5" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="startRecording()" id="recordBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
+                                    <i class="fas fa-record-vinyl ml-2"></i>تسجيل
+                                </button>
+                                <button onclick="playRecording()" id="playBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors" disabled>
+                                    <i class="fas fa-play ml-2"></i>تشغيل
+                                </button>
+                                <button onclick="broadcastRecording()" id="broadcastBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors" disabled>
+                                    <i class="fas fa-broadcast-tower ml-2"></i>إذاعة
+                                </button>
+                            </div>
+                            <div id="recordingStatus" class="text-sm text-gray-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- Instant Audio -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-bolt text-yellow-400 ml-2"></i>الصوتيات الجاهزة
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">اختر ملف صوتي</label>
+                                <select id="instantAudioSelect" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                                    <option value="">اختر ملف...</option>
+                                    <option value="instant1.mp3">اهلاً بكم في المركز</option>
+                                    <option value="instant2.mp3">الرجاء الانتظار</option>
+                                    <option value="instant3.mp3">شكراً لصبركم</option>
+                                </select>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="playInstantAudio()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
+                                    <i class="fas fa-play ml-2"></i>تشغيل
+                                </button>
+                                <button onclick="broadcastInstantAudio()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                                    <i class="fas fa-broadcast-tower ml-2"></i>إذاعة
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audio Queue -->
+                <div class="glass-effect rounded-xl p-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-list-ol text-purple-400 ml-2"></i>قائمة الانتظار الصوتية
+                    </h3>
+                    <div id="audioQueue" class="space-y-2">
+                        <!-- Audio queue items will be displayed here -->
+                    </div>
+                    <div class="mt-4 flex space-x-2">
+                        <button onclick="clearAudioQueue()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-trash ml-2"></i>مسح القائمة
+                        </button>
+                        <button onclick="processAudioQueue()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-play ml-2"></i>تشغيل الكل
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Doctors Tab -->
+            <div id="doctors-tab" class="tab-content hidden">
+                <div class="glass-effect rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-user-plus text-green-400 ml-2"></i>إضافة طبيب جديد
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <input type="text" id="doctorName" placeholder="اسم الطبيب" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                        <input type="text" id="doctorPhone" placeholder="رقم التليفون" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                        <input type="text" id="doctorNationalId" placeholder="الرقم القومي" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                        <input type="text" id="doctorSpecialty" placeholder="التخصص" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                        <select id="doctorClinic" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                            <option value="">اختر العيادة</option>
+                        </select>
+                        <input type="email" id="doctorEmail" placeholder="البريد الإلكتروني" class="p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                        <button onclick="addDoctor()" class="bg-green-600 hover:bg-green-700 p-3 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-plus ml-2"></i>إضافة
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-effect rounded-xl p-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-users text-blue-400 ml-2"></i>قائمة الأطباء
+                    </h3>
+                    <div id="doctorsList" class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-white border-opacity-30">
+                                    <th class="text-right p-2">الاسم</th>
+                                    <th class="text-right p-2">التخصص</th>
+                                    <th class="text-right p-2">العيادة</th>
+                                    <th class="text-right p-2">رقم التليفون</th>
+                                    <th class="text-right p-2">الحالة</th>
+                                    <th class="text-right p-2">الإجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="doctorsTableBody">
+                                <!-- Doctors will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Appointments Tab -->
+            <div id="appointments-tab" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Appointment Settings -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-cog text-blue-400 ml-2"></i>إعدادات الحجز
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">عدد الحجوزات لكل عيادة (شفت صباحي)</label>
+                                <input type="number" id="morningSlots" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="20">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">عدد الحجوزات لكل عيادة (شفت مسائي)</label>
+                                <input type="number" id="eveningSlots" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="15">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">وقت بداية الشفت الصباحي</label>
+                                <input type="time" id="morningStart" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" value="08:00">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">وقت نهاية الشفت الصباحي</label>
+                                <input type="time" id="morningEnd" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" value="14:00">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">وقت بداية الشفت المسائي</label>
+                                <input type="time" id="eveningStart" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" value="14:00">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">وقت نهاية الشفت المسائي</label>
+                                <input type="time" id="eveningEnd" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" value="20:00">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Appointment Requests -->
+                    <div class="glass-effect rounded-xl p-6">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-calendar-check text-green-400 ml-2"></i>طلبات الحجز
+                        </h3>
+                        <div id="appointmentRequests" class="space-y-3 max-h-96 overflow-y-auto">
+                            <!-- Appointment requests will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center mt-6">
+                    <button onclick="saveAppointmentSettings()" class="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-save ml-2"></i>حفظ الإعدادات
+                    </button>
+                </div>
+            </div>
+
+            <!-- Notifications Tab -->
+            <div id="notifications-tab" class="tab-content hidden">
+                <div class="glass-effect rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-bullhorn text-yellow-400 ml-2"></i>إرسال تنبيه
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">نوع التنبيه</label>
+                                <select id="notificationType" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                                    <option value="general">تنبيه عام</option>
+                                    <option value="client">نداء عميل</option>
+                                    <option value="emergency">حالة طارئة</option>
+                                    <option value="doctor">تنبيه طبيب</option>
+                                </select>
+                            </div>
+                            <div id="clientNumberDiv" class="hidden">
+                                <label class="block text-sm font-semibold mb-2">رقم العميل</label>
+                                <input type="number" id="clientNumber" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="رقم العميل">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">العيادة</label>
+                                <select id="notificationClinic" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                                    <option value="">اختر العيادة</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">نص التنبيه</label>
+                            <textarea id="notificationText" rows="3" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="أدخل نص التنبيه..."></textarea>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="sendNotification()" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg transition-colors">
+                                <i class="fas fa-paper-plane ml-2"></i>إرسال
+                            </button>
+                            <button onclick="sendToAllControls()" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg transition-colors">
+                                <i class="fas fa-broadcast-tower ml-2"></i>إرسال لجميع لوحات التحكم
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Notifications -->
+                <div class="glass-effect rounded-xl p-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-history text-purple-400 ml-2"></i>أحدث التنبيهات
+                    </h3>
+                    <div id="recentNotifications" class="space-y-2 max-h-96 overflow-y-auto">
+                        <!-- Recent notifications will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Tab -->
+            <div id="emergency-tab" class="tab-content hidden">
+                <div class="glass-effect rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center text-red-400">
+                        <i class="fas fa-exclamation-triangle ml-2"></i>التحكم في الحالات الطارئة
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">العيادة</label>
+                                <select id="emergencyClinic" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg">
+                                    <option value="">اختر العيادة</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">رقم العميل (اختياري)</label>
+                                <input type="number" id="emergencyClientNumber" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="رقم العميل للتخطي">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold mb-2">سبب الحالة الطارئة</label>
+                                <textarea id="emergencyReason" rows="3" class="w-full p-3 bg-white bg-opacity-10 border border-white border-opacity-30 rounded-lg" placeholder="وصف الحالة الطارئة..."></textarea>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h4 class="font-semibold text-lg">الإجراءات المتاحة:</h4>
+                            <button onclick="activateEmergency()" class="w-full bg-red-600 hover:bg-red-700 p-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-exclamation-circle ml-2"></i>تفعيل الحالة الطارئة
+                            </button>
+                            <button onclick="skipQueue()" class="w-full bg-orange-600 hover:bg-orange-700 p-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-forward ml-2"></i>تخطي الطابور
+                            </button>
+                            <button onclick="clearAllQueues()" class="w-full bg-yellow-600 hover:bg-yellow-700 p-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-broom ml-2"></i>تصفير جميع العيادات
+                            </button>
+                            <button onclick="resetDaily()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-redo ml-2"></i>تصفير يومي (الساعة 6 ص)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Log -->
+                <div class="glass-effect rounded-xl p-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-clipboard-list text-orange-400 ml-2"></i>سجل الحالات الطارئة
+                    </h3>
+                    <div id="emergencyLog" class="space-y-2 max-h-96 overflow-y-auto">
+                        <!-- Emergency log will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

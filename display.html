@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شاشة العرض - نظام إدارة الانتظار</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; overflow: hidden; }
+        .display-bg { 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .news-ticker {
+            animation: scroll-left 30s linear infinite;
+        }
+        @keyframes scroll-left {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        .clinic-card {
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .clinic-card.active {
+            background: rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+        .clinic-card.inactive {
+            opacity: 0.5;
+            filter: grayscale(50%);
+        }
+        .notification-bar {
+            animation: slideDown 0.5s ease-out;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .arabic-number { font-family: 'Cairo', sans-serif; }
+        .qr-code {
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .doctor-image {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #3b82f6;
+        }
+        .video-player {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="display-bg text-white h-screen flex flex-col">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-gray-800">
+            <div class="text-center mb-6">
+                <i class="fas fa-lock text-4xl text-blue-600 mb-4"></i>
+                <h2 class="text-2xl font-bold">الدخول إلى شاشة العرض</h2>
+                <p class="text-gray-600 mt-2">أدخل كلمة المرور للمتابعة</p>
+            </div>
+            <form id="displayLoginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">كلمة المرور</label>
+                    <input type="password" id="displayPasswordInput" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="أدخل كلمة المرور">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">رقم الشاشة</label>
+                    <select id="screenNumber" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
+                        <option value="1">الشاشة 1</option>
+                        <option value="2">الشاشة 2</option>
+                        <option value="3">الشاشة 3</option>
+                        <option value="4">الشاشة 4</option>
+                        <option value="5">الشاشة 5</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                    <i class="fas fa-sign-in-alt ml-2"></i>دخول
+                </button>
+            </form>
+            <div id="displayLoginError" class="mt-4 text-red-600 text-center hidden">كلمة المرور غير صحيحة</div>
+        </div>
+    </div>
+
+    <!-- Main Display Interface -->
+    <div id="displayInterface" class="hidden flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="bg-black bg-opacity-50 p-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <i class="fas fa-desktop text-2xl text-blue-400"></i>
+                <h1 id="centerName" class="text-xl font-bold">مركزنا الطبي</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="currentTime" class="text-lg font-semibold"></span>
+                <span id="currentDate" class="text-sm text-gray-300"></span>
+                <div class="flex space-x-2">
+                    <button onclick="toggleFullscreen()" class="bg-blue-600 hover:bg-blue-700 p-2 rounded transition-colors" title="ملء الشاشة">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                    <button onclick="zoomIn()" class="bg-green-600 hover:bg-green-700 p-2 rounded transition-colors" title="تكبير">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button onclick="zoomOut()" class="bg-red-600 hover:bg-red-700 p-2 rounded transition-colors" title="تصغير">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button onclick="logoutDisplay()" class="bg-gray-600 hover:bg-gray-700 p-2 rounded transition-colors" title="خروج">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex">
+            <!-- Video Player Section (Left) -->
+            <section class="w-2/3 p-6">
+                <div class="video-player h-full flex items-center justify-center">
+                    <video id="mainVideo" class="w-full h-full object-cover rounded-lg" controls>
+                        <source src="" type="video/mp4">
+                        متصفحك لا يدعم تشغيل الفيديو
+                    </video>
+                </div>
+                <div class="mt-4 text-center">
+                    <div class="flex justify-center space-x-4">
+                        <button onclick="playVideo()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-play ml-2"></i>تشغيل
+                        </button>
+                        <button onclick="pauseVideo()" class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-pause ml-2"></i>إيقاف مؤقت
+                        </button>
+                        <button onclick="nextVideo()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-forward ml-2"></i>التالي
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Clinics Display Section (Right) -->
+            <section class="w-1/3 p-6 flex flex-col">
+                <!-- Clinics List -->
+                <div class="flex-1 space-y-4 overflow-y-auto" id="clinicsDisplay">
+                    <!-- Clinics will be loaded here -->
+                </div>
+
+                <!-- QR Code and Doctor Image Section -->
+                <div class="mt-6 space-y-4">
+                    <!-- QR Code -->
+                    <div class="text-center">
+                        <h3 class="text-lg font-semibold mb-2">دخول العميل</h3>
+                        <div class="qr-code inline-block">
+                            <canvas id="qrCodeCanvas" width="120" height="120"></canvas>
+                        </div>
+                        <p class="text-sm text-gray-300 mt-2">امسح الكود للدخول</p>
+                    </div>
+
+                    <!-- Doctor Image Display -->
+                    <div class="text-center">
+                        <h3 class="text-lg font-semibold mb-2">الأطباء</h3>
+                        <div id="doctorImageContainer" class="flex justify-center">
+                            <img id="currentDoctorImage" class="doctor-image" src="" alt="الطبيب">
+                        </div>
+                        <p id="doctorNameDisplay" class="text-sm text-gray-300 mt-2">د. أحمد محمد</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- News Ticker Footer -->
+        <footer class="bg-black bg-opacity-70 py-3 overflow-hidden">
+            <div class="news-ticker text-lg font-semibold whitespace-nowrap" id="newsTicker">
+                أهلاً وسهلاً بكم في مركزنا الطبي - نسعى دائماً لتقديم أفضل خدمة طبية لكم - الرجاء الانتظار بصبر وسيتم استدعاؤكم قريباً
+            </div>
+        </footer>
+    </div>
+
+    <!-- Notification Bar -->
+    <div id="notificationBar" class="hidden fixed top-0 left-0 right-0 bg-blue-600 text-white p-4 notification-bar z-40">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fas fa-bell text-xl ml-3"></i>
+                <span id="notificationText" class="text-lg font-semibold"></span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="notificationTime" class="text-sm"></span>
+                <button onclick="closeNotification()" class="text-white hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-30">
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-400 mb-4"></i>
+            <p class="text-xl font-semibold">جاري التحميل...</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/display.js"></script>
+</body>
+</html>
