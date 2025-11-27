@@ -14,6 +14,657 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script>
 const firestore = firebase.firestore();
+
+
+    // أضف هذا الكود في نهاية script في admin.html
+
+// Load doctors list
+async function loadDoctorsNew() {
+    try {
+        const doctorsSnap = await firestore.collection('doctors').get();
+        const listDiv = document.getElementById('doctorsListNew');
+        
+        if (doctorsSnap.empty) {
+            listDiv.innerHTML = '<p class="text-gray-500 text-center py-4">لا يوجد أطباء</p>';
+            return;
+        }
+
+        // Get specialties for filter
+        const specialties = new Set();
+        
+        listDiv.innerHTML = '';
+        doctorsSnap.forEach(doc => {
+            const doctor = { id: doc.id, ...doc.data() };
+            specialties.add(doctor.specialty);
+            
+            const statusColor = doctor.workStatus === 'نشط' ? 'text-green-600' : 
+                               doctor.workStatus === 'معلق' ? 'text-red-600' : 'text-yellow-600';
+            
+            listDiv.innerHTML += `
+                <div class="doctor-item flex items-center justify-between p-4 bg-gray-50 rounded-lg" 
+                     data-specialty="${doctor.specialty}" data-status="${doctor.workStatus}">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-4 mb-2">
+                            <h4 class="text-lg font-bold text-gray-800">${doctor.name}</h4>
+                            <span class="text-sm text-gray-600">رقم: ${doctor.employeeNumber}</span>
+                            <span class="${statusColor} font-bold text-sm">${doctor.workStatus}</span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-600">
+                            <p><strong>التخصص:</strong> ${doctor.specialty}</p>
+                            <p><strong>الهاتف:</strong> ${doctor.phone}</p>
+                            <p><strong>الشيفت:</strong> ${doctor.shift}</p>
+                            <p><strong>الإجازات:</strong> ${doctor.regularLeaveBalance || 0} / ${doctor.casualLeaveBalance || 0}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="viewDoctorReport('${doctor.id}')" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">تقرير</button>
+                        <button onclick="editDoctorNew('${doctor.id}')" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">تعديل</button>
+                        <button onclick="deleteDoctorNew('${doctor.id}')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">حذف</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Update specialty filter
+        const filterSelect = document.getElementById('filterSpecialty');
+        filterSelect.innerHTML = '<option value="">كل التخصصات</option>';
+        specialties.forEach(spec => {
+            filterSelect.innerHTML += `<option value="${spec}">${spec}</option>`;
+        });
+
+        // Update attendance doctor select
+        const attendanceSelect = document.getElementById('attendanceDoctor');
+        attendanceSelect.innerHTML = '<option value="">اختر الطبيب</option>';
+        doctorsSnap.forEach(doc => {
+            const doctor = doc.data();
+            attendanceSelect.innerHTML += `<option value="${doc.id}">${doctor.name} - ${doctor.employeeNumber}</option>`;
+        });
+
+    } catch (error) {
+        console.error('Error loading doctors:', error);
+    }
+}
+
+function searchDoctors() {
+    const search = document.getElementById('searchDoctors').value.toLowerCase();
+    const items = document.querySelectorAll('.doctor-item');
+    
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(search) ? 'flex' : 'none';
+    });
+}
+
+function filterDoctors() {
+    const specialty = document.getElementById('filterSpecialty').value;
+    const status = document.getElementById('filterStatus').value;
+    const items = document.querySelectorAll('.doctor-item');
+    
+    items.forEach(item => {
+        const itemSpecialty = item.dataset.specialty;
+        const itemStatus = item.dataset.status;
+        
+        const matchSpecialty = !specialty || itemSpecialty === specialty;
+        const matchStatus = !status || itemStatus === status;
+        
+        item.style.display = (matchSpecialty && matchStatus) ? 'flex' : 'none';
+    });
+}
+
+function showAddDoctorNew() {
+    document.getElementById('doctorModalTitleNew').textContent = 'إضافة طبيب جديد';
+    document.getElementById('editDoctorIdNew').value = '';
+    document.getElementById('doctorEmployeeNumber').value = '';
+    document.getElementById('doctorNameNew').value = '';
+    document.getElementById('doctorPhoneNew').value = '';
+    document.getElementById('doctorNationalId').value = '';
+    document.getElementById('doctorSpecialtyNew').value = '';
+    document.getElementById('doctorClinicNew').value = '';
+    document.getElementById('doctorWorkStatus').value = 'نشط';
+    document.getElementById('doctorShift').value = 'صباحي';
+    document.getElementById('doctorRegularLeave').value = '21';
+    document.getElementById('doctorCasualLeave').value = '7';
+    document.getElementById('doctorEmail').value = '';
+    document.getElementById('doctorPassword').value = '';
+    document.getElementById('doctorNotesNew').value = '';
+    document.querySelectorAll('.doctor-day-checkbox-new').forEach(cb => cb.checked = false);
+    document.getElementById('passwordSection').style.display = 'block';
+    
+    // Load clinics
+    loadClinicsForDoctor();
+    
+    document.getElementById('doctorModalNew').classList.remove('hidden');
+}
+
+async function editDoctorNew(id) {
+    try {
+        const doc = await firestore.collection('doctors').doc(id).get();
+        const doctor = doc.data();
+        
+        document.getElementById('doctorModalTitleNew').textContent = 'تعديل بيانات الطبيب';
+        document.getElementById('editDoctorIdNew').value = id;
+        document.getElementById('doctorEmployeeNumber').value = doctor.employeeNumber;
+        document.getElementById('doctorNameNew').value = doctor.name;
+        document.getElementById('doctorPhoneNew').value = doctor.phone;
+        document.getElementById('doctorNationalId').value = doctor.nationalId;
+        document.getElementById('doctorSpecialtyNew').value = doctor.specialty;
+        document.getElementById('doctorClinicNew').value = doctor.clinicId;
+        document.getElementById('doctorWorkStatus').value = doctor.workStatus;
+        document.getElementById('doctorShift').value = doctor.shift;
+        document.getElementById('doctorRegularLeave').value = doctor.regularLeaveBalance;
+        document.getElementById('doctorCasualLeave').value = doctor.casualLeaveBalance;
+        document.getElementById('doctorEmail').value = doctor.email;
+        document.getElementById('doctorNotesNew').value = doctor.notes || '';
+        
+        // Work days
+        const workDays = doctor.workDays || [];
+        document.querySelectorAll('.doctor-day-checkbox-new').forEach(cb => {
+            cb.checked = workDays.includes(cb.value);
+        });
+        
+        // Hide password section when editing
+        document.getElementById('passwordSection').style.display = 'none';
+        
+        await loadClinicsForDoctor();
+        document.getElementById('doctorModalNew').classList.remove('hidden');
+    } catch (error) {
+        console.error('Error editing doctor:', error);
+        alert('خطأ في تحميل البيانات');
+    }
+}
+
+async function loadClinicsForDoctor() {
+    const select = document.getElementById('doctorClinicNew');
+    const clinicsSnap = await db.ref('clinics').once('value');
+    const clinics = clinicsSnap.val() || {};
+    
+    select.innerHTML = '<option value="">اختر العيادة</option>';
+    Object.keys(clinics).forEach(id => {
+        select.innerHTML += `<option value="${id}">${clinics[id].name}</option>`;
+    });
+}
+
+async function saveDoctorNew() {
+    const id = document.getElementById('editDoctorIdNew').value;
+    const employeeNumber = document.getElementById('doctorEmployeeNumber').value;
+    const name = document.getElementById('doctorNameNew').value;
+    const phone = document.getElementById('doctorPhoneNew').value;
+    const nationalId = document.getElementById('doctorNationalId').value;
+    const specialty = document.getElementById('doctorSpecialtyNew').value;
+    const clinicId = document.getElementById('doctorClinicNew').value;
+    const workStatus = document.getElementById('doctorWorkStatus').value;
+    const shift = document.getElementById('doctorShift').value;
+    const regularLeave = parseInt(document.getElementById('doctorRegularLeave').value);
+    const casualLeave = parseInt(document.getElementById('doctorCasualLeave').value);
+    const email = document.getElementById('doctorEmail').value;
+    const password = document.getElementById('doctorPassword').value;
+    const notes = document.getElementById('doctorNotesNew').value;
+    
+    const workDays = Array.from(document.querySelectorAll('.doctor-day-checkbox-new:checked'))
+        .map(cb => cb.value);
+
+    if (!employeeNumber || !name || !phone || !specialty || !email) {
+        alert('يرجى ملء الحقول المطلوبة');
+        return;
+    }
+
+    try {
+        const doctorData = {
+            employeeNumber,
+            name,
+            phone,
+            nationalId,
+            specialty,
+            clinicId,
+            workDays,
+            workStatus,
+            shift,
+            regularLeaveBalance: regularLeave,
+            casualLeaveBalance: casualLeave,
+            absenceDays: 0,
+            notes,
+            email,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (id) {
+            // Update existing
+            await firestore.collection('doctors').doc(id).update(doctorData);
+            alert('تم تحديث بيانات الطبيب');
+        } else {
+            // Create new
+            if (!password) {
+                alert('يرجى إدخال كلمة السر');
+                return;
+            }
+
+            // Create Firebase Auth user
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            
+            doctorData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await firestore.collection('doctors').add(doctorData);
+            
+            alert('تم إضافة الطبيب بنجاح');
+        }
+
+        closeDoctorModalNew();
+        loadDoctorsNew();
+    } catch (error) {
+        console.error('Error saving doctor:', error);
+        if (error.code === 'auth/email-already-in-use') {
+            alert('البريد الإلكتروني مستخدم بالفعل');
+        } else {
+            alert('خطأ في حفظ البيانات: ' + error.message);
+        }
+    }
+}
+
+async function deleteDoctorNew(id) {
+    if (!confirm('هل أنت متأكد من حذف هذا الطبيب؟')) return;
+
+    try {
+        await firestore.collection('doctors').doc(id).delete();
+        alert('تم حذف الطبيب');
+        loadDoctorsNew();
+    } catch (error) {
+        console.error('Error deleting doctor:', error);
+        alert('خطأ في الحذف');
+    }
+}
+
+function closeDoctorModalNew() {
+    document.getElementById('doctorModalNew').classList.add('hidden');
+}
+
+// Attendance Management
+async function saveAttendance() {
+    const doctorId = document.getElementById('attendanceDoctor').value;
+    const date = document.getElementById('attendanceDate').value;
+    const checkIn = document.getElementById('checkInTime').value;
+    const checkOut = document.getElementById('checkOutTime').value;
+    const status = document.getElementById('attendanceStatus').value;
+    const shift = document.getElementById('attendanceShift').value;
+    const notes = document.getElementById('attendanceNotes').value;
+
+    if (!doctorId || !date) {
+        alert('يرجى اختيار الطبيب والتاريخ');
+        return;
+    }
+
+    try {
+        const month = date.substring(0, 7); // YYYY-MM
+        
+        const attendanceData = {
+            doctorId,
+            date,
+            month,
+            checkIn: checkIn ? firebase.firestore.Timestamp.fromDate(new Date(`${date}T${checkIn}`)) : null,
+            checkOut: checkOut ? firebase.firestore.Timestamp.fromDate(new Date(`${date}T${checkOut}`)) : null,
+            status,
+            shift,
+            notes,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await firestore.collection('attendance').add(attendanceData);
+        alert('تم حفظ بيانات الحضور');
+        
+        // Clear form
+        document.getElementById('attendanceDate').value = '';
+        document.getElementById('checkInTime').value = '';
+        document.getElementById('checkOutTime').value = '';
+        document.getElementById('attendanceNotes').value = '';
+    } catch (error) {
+        console.error('Error saving attendance:', error);
+        alert('خطأ في حفظ البيانات');
+    }
+}
+
+async function uploadAttendanceExcel() {
+    const fileInput = document.getElementById('excelFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('يرجى اختيار ملف');
+        return;
+    }
+
+    alert('هذه الميزة تتطلب مكتبة لقراءة Excel. يمكنك استخدام SheetJS (xlsx) لتنفيذها.');
+    // Implementation would require xlsx library
+}
+
+// Requests Management
+let currentAdminFilter = 'all';
+let currentRequestId = null;
+
+async function loadAdminRequests() {
+    try {
+        const requestsSnap = await firestore.collection('requests')
+            .orderBy('submittedAt', 'desc')
+            .get();
+
+        const listDiv = document.getElementById('adminRequestsList');
+        
+        // Count by status
+        let countAll = 0, countPending = 0, countApproved = 0, countRejected = 0;
+        
+        if (requestsSnap.empty) {
+            listDiv.innerHTML = '<p class="text-gray-500 text-center py-4">لا توجد طلبات</p>';
+        } else {
+            listDiv.innerHTML = '';
+            requestsSnap.forEach(doc => {
+                const req = { id: doc.id, ...doc.data() };
+                countAll++;
+                
+                if (req.status === 'قيد المراجعة') countPending++;
+                else if (req.status === 'موافق') countApproved++;
+                else if (req.status === 'مرفوض') countRejected++;
+                
+                // Filter
+                if (currentAdminFilter !== 'all') {
+                    const filterMap = { 'pending': 'قيد المراجعة', 'approved': 'موافق', 'rejected': 'مرفوض' };
+                    if (req.status !== filterMap[currentAdminFilter]) return;
+                }
+                
+                const date = req.submittedAt ? new Date(req.submittedAt.toDate()).toLocaleDateString('ar-EG') : '';
+                
+                let statusBadge = '';
+                if (req.status === 'قيد المراجعة') {
+                    statusBadge = '<span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">قيد المراجعة ⏳</span>';
+                } else if (req.status === 'موافق') {
+                    statusBadge = '<span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold">موافق ✅</span>';
+                } else {
+                    statusBadge = '<span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-bold">مرفوض ❌</span>';
+                }
+
+                const actionBtn = req.status === 'قيد المراجعة' ? 
+                    `<button onclick="openRequestReview('${req.id}')" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">مراجعة</button>` : 
+                    `<button onclick="viewRequestDetails('${req.id}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">عرض</button>`;
+
+                listDiv.innerHTML += `
+                    <div class="border rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="text-lg font-bold text-gray-800">${req.doctorName}</h4>
+                                <p class="text-sm text-gray-600">${req.type}</p>
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-600 mb-2">
+                            <p><strong>من:</strong> ${req.fromDate}</p>
+                            <p><strong>إلى:</strong> ${req.toDate}</p>
+                            <p><strong>الأيام:</strong> ${req.days || 0}</p>
+                            <p><strong>القائم بالعمل:</strong> ${req.replacement || '-'}</p>
+                        </div>
+                        ${req.notes ? `<p class="text-sm text-gray-600 mb-2"><strong>ملاحظات:</strong> ${req.notes}</p>` : ''}
+                        <div class="flex items-center justify-between mt-3">
+                            <p class="text-xs text-gray-500">تاريخ التقديم: ${date}</p>
+                            ${actionBtn}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Update counts
+        document.getElementById('countAll').textContent = countAll;
+        document.getElementById('countPending').textContent = countPending;
+        document.getElementById('countApproved').textContent = countApproved;
+        document.getElementById('countRejected').textContent = countRejected;
+    } catch (error) {
+        console.error('Error loading requests:', error);
+    }
+}
+
+function filterAdminRequests(filter) {
+    currentAdminFilter = filter;
+    
+    // Update button styles
+    document.querySelectorAll('.admin-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white', 'bg-gray-200');
+        btn.classList.add('bg-gray-200');
+    });
+    event.target.classList.remove('bg-gray-200');
+    event.target.classList.add('bg-blue-600', 'text-white');
+    
+    loadAdminRequests();
+}
+
+async function openRequestReview(id) {
+    currentRequestId = id;
+    
+    try {
+        const doc = await firestore.collection('requests').doc(id).get();
+        const req = doc.data();
+        
+        const content = document.getElementById('requestReviewContent');
+        content.innerHTML = `
+            <div class="bg-gray-50 p-4 rounded-lg space-y-2">
+                <p><strong>الطبيب:</strong> ${req.doctorName}</p>
+                <p><strong>نوع الطلب:</strong> ${req.type}</p>
+                <p><strong>من:</strong> ${req.fromDate} <strong>إلى:</strong> ${req.toDate}</p>
+                <p><strong>عدد الأيام:</strong> ${req.days}</p>
+                <p><strong>القائم بالعمل:</strong> ${req.replacement || '-'}</p>
+                ${req.notes ? `<p><strong>ملاحظات الطبيب:</strong> ${req.notes}</p>` : ''}
+            </div>
+        `;
+        
+        document.getElementById('adminResponseText').value = '';
+        document.getElementById('requestReviewModal').classList.remove('hidden');
+    } catch (error) {
+        console.error('Error loading request:', error);
+    }
+}
+
+async function reviewRequest(action) {
+    const response = document.getElementById('adminResponseText').value;
+    
+    if (!confirm(`هل أنت متأكد من ${action === 'approve' ? 'الموافقة' : 'الرفض'}؟`)) return;
+
+    try {
+        const doc = await firestore.collection('requests').doc(currentRequestId).get();
+        const req = doc.data();
+        
+        const updateData = {
+            status: action === 'approve' ? 'موافق' : 'مرفوض',
+            adminResponse: response,
+            reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            reviewedBy: currentUser.email
+        };
+        
+        await firestore.collection('requests').doc(currentRequestId).update(updateData);
+        
+        // If approved, deduct from leave balance
+        if (action === 'approve') {
+            const doctorDoc = await firestore.collection('doctors')
+                .where('name', '==', req.doctorName)
+                .get();
+            
+            if (!doctorDoc.empty) {
+                const doctorId = doctorDoc.docs[0].id;
+                const doctor = doctorDoc.docs[0].data();
+                
+                if (req.type === 'إجازة اعتيادية') {
+                    await firestore.collection('doctors').doc(doctorId).update({
+                        regularLeaveBalance: doctor.regularLeaveBalance - req.days
+                    });
+                } else if (req.type === 'إجازة عارضة') {
+                    await firestore.collection('doctors').doc(doctorId).update({
+                        casualLeaveBalance: doctor.casualLeaveBalance - req.days
+                    });
+                }
+            }
+        }
+        
+        alert('تم مراجعة الطلب');
+        closeRequestReviewModal();
+        loadAdminRequests();
+    } catch (error) {
+        console.error('Error reviewing request:', error);
+        alert('خطأ في مراجعة الطلب');
+    }
+}
+
+function closeRequestReviewModal() {
+    document.getElementById('requestReviewModal').classList.add('hidden');
+}
+
+// Complaints Management
+let currentComplaintFilter = 'all';
+let currentComplaintId = null;
+
+async function loadComplaints() {
+    try {
+        let query = firestore.collection('complaints').orderBy('submittedAt', 'desc');
+        
+        const complaintsSnap = await query.get();
+        const listDiv = document.getElementById('complaintsList');
+        
+        let newCount = 0;
+        
+        if (complaintsSnap.empty) {
+            listDiv.innerHTML = '<p class="text-gray-500 text-center py-4">لا توجد شكاوى أو اقتراحات</p>';
+        } else {
+            listDiv.innerHTML = '';
+            complaintsSnap.forEach(doc => {
+                const comp = { id: doc.id, ...doc.data() };
+                
+                if (comp.status === 'جديد') newCount++;
+                
+                // Filter
+                if (currentComplaintFilter === 'new' && comp.status !== 'جديد') return;
+                if (currentComplaintFilter === 'شكوى' && comp.type !== 'شكوى') return;
+                if (currentComplaintFilter === 'اقتراح' && comp.type !== 'اقتراح') return;
+                
+                const date = comp.submittedAt ? new Date(comp.submittedAt.toDate()).toLocaleDateString('ar-EG') : '';
+                
+                const typeColor = comp.type === 'شكوى' ? 'text-red-600' : 'text-blue-600';
+                const statusBadge = comp.status === 'جديد' ? 
+                    '<span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-bold">جديد 🔴</span>' :
+                    comp.status === 'قيد المراجعة' ?
+                    '<span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold">قيد المراجعة</span>' :
+                    '<span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold">تم الرد ✓</span>';
+
+                listDiv.innerHTML += `
+                    <div class="border rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <p class="${typeColor} font-bold">${comp.type}</p>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-gray-800 mb-2">${comp.content}</p>
+                        <div class="grid grid-cols-3 gap-2 text-sm text-gray-600 mb-2">
+                            ${comp.name ? `<p><strong>الاسم:</strong> ${comp.name}</p>` : ''}
+                            ${comp.phone ? `<p><strong>الهاتف:</strong> ${comp.phone}</p>` : ''}
+                            ${comp.email ? `<p><strong>البريد:</strong> ${comp.email}</p>` : ''}
+                        </div>
+                        ${comp.notes ? `<p class="text-sm text-gray-600 mb-2"><strong>ملاحظات:</strong> ${comp.notes}</p>` : ''}
+                        ${comp.adminResponse ? `<div class="bg-blue-50 p-3 rounded mt-2"><p class="text-sm"><strong>رد الإدارة:</strong> ${comp.adminResponse}</p></div>` : ''}
+                        <div class="flex items-center justify-between mt-3">
+                            <p class="text-xs text-gray-500">${date}</p>
+                            ${comp.status !== 'تم الرد' ? `<button onclick="openComplaintResponse('${comp.id}')" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">الرد</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        document.getElementById('newComplaintsCount').textContent = newCount;
+    } catch (error) {
+        console.error('Error loading complaints:', error);
+    }
+}
+
+function filterComplaints(filter) {
+    currentComplaintFilter = filter;
+    
+    document.querySelectorAll('.complaint-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white', 'bg-gray-200');
+        btn.classList.add('bg-gray-200');
+    });
+    event.target.classList.remove('bg-gray-200');
+    event.target.classList.add('bg-blue-600', 'text-white');
+    
+    loadComplaints();
+}
+
+async function openComplaintResponse(id) {
+    currentComplaintId = id;
+    
+    try {
+        const doc = await firestore.collection('complaints').doc(id).get();
+        const comp = doc.data();
+        
+        const content = document.getElementById('complaintContent');
+        content.innerHTML = `
+            <div class="bg-gray-50 p-4 rounded-lg space-y-2">
+                <p><strong>النوع:</strong> ${comp.type}</p>
+                <p><strong>المحتوى:</strong> ${comp.content}</p>
+                ${comp.name ? `<p><strong>الاسم:</strong> ${comp.name}</p>` : ''}
+                ${comp.phone ? `<p><strong>الهاتف:</strong> ${comp.phone}</p>` : ''}
+                ${comp.email ? `<p><strong>البريد:</strong> ${comp.email}</p>` : ''}
+            </div>
+        `;
+        
+        document.getElementById('complaintResponseText').value = '';
+        document.getElementById('complaintResponseModal').classList.remove('hidden');
+        
+        // Mark as under review
+        await firestore.collection('complaints').doc(id).update({
+            status: 'قيد المراجعة'
+        });
+    } catch (error) {
+        console.error('Error opening complaint:', error);
+    }
+}
+
+async function sendComplaintResponse() {
+    const response = document.getElementById('complaintResponseText').value;
+    
+    if (!response.trim()) {
+        alert('يرجى كتابة الرد');
+        return;
+    }
+
+    try {
+        await firestore.collection('complaints').doc(currentComplaintId).update({
+            adminResponse: response,
+            status: 'تم الرد',
+            respondedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        alert('تم إرسال الرد');
+        closeComplaintResponseModal();
+        loadComplaints();
+    } catch (error) {
+        console.error('Error sending response:', error);
+        alert('خطأ في إرسال الرد');
+    }
+}
+
+function closeComplaintResponseModal() {
+    document.getElementById('complaintResponseModal').classList.add('hidden');
+}
+
+// Load data on page load (add to existing auth.onAuthStateChanged)
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        currentUser = user;
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('adminPanel').classList.remove('hidden');
+        loadSettings();
+        loadClinics();
+        loadDoctorsNew(); // NEW
+        loadAdminRequests(); // NEW
+        loadComplaints(); // NEW
+    } else {
+        currentUser = null;
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('adminPanel').classList.add('hidden');
+    }
+});
+
+// Initial date set
+document.getElementById('attendanceDate').valueAsDate = new Date();
 </script>
 
     <style>
