@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>حجز موعد</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        body { font-family: 'Cairo', sans-family; }
+        .time-slot { transition: all 0.3s; }
+        .time-slot:hover:not(.disabled) { transform: scale(1.05); }
+        .time-slot.selected { border: 3px solid #0d9488; background: #ccfbf1; }
+        .time-slot.disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-50 to-pink-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <svg class="w-20 h-20 mx-auto text-purple-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">حجز موعد</h1>
+            <p class="text-gray-600" id="centerNameApp">احجز موعدك في المركز الطبي</p>
+        </div>
+
+        <!-- Booking Form -->
+        <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
+            <div class="space-y-6">
+                <!-- Personal Info -->
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">البيانات الشخصية</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 font-bold mb-2">الاسم بالكامل: *</label>
+                            <input type="text" id="clientName" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" placeholder="أحمد محمد علي">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-bold mb-2">الرقم القومي: *</label>
+                            <input type="text" id="nationalId" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" placeholder="29001011234567" maxlength="14">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-bold mb-2">رقم الهاتف: *</label>
+                            <input type="tel" id="clientPhone" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" placeholder="01234567890">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appointment Details -->
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">تفاصيل الموعد</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 font-bold mb-2">العيادة: *</label>
+                            <select id="appointmentClinic" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" onchange="loadAvailableDates()">
+                                <option value="">اختر العيادة</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-bold mb-2">التاريخ المطلوب: *</label>
+                            <input type="date" id="appointmentDate" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" onchange="loadTimeSlots()">
+                        </div>
+                    </div>
+
+                    <!-- Shift Selection -->
+                    <div class="mt-4">
+                        <label class="block text-gray-700 font-bold mb-2">الشيفت: *</label>
+                        <div class="flex gap-4">
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="shift" value="صباحي" class="hidden shift-radio" onchange="loadTimeSlots()">
+                                <div class="shift-option border-2 border-gray-300 rounded-lg p-4 text-center hover:border-purple-600 transition-all">
+                                    <p class="font-bold text-gray-800">صباحي</p>
+                                    <p class="text-sm text-gray-600">9:00 ص - 2:00 م</p>
+                                </div>
+                            </label>
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="shift" value="مسائي" class="hidden shift-radio" onchange="loadTimeSlots()">
+                                <div class="shift-option border-2 border-gray-300 rounded-lg p-4 text-center hover:border-purple-600 transition-all">
+                                    <p class="font-bold text-gray-800">مسائي</p>
+                                    <p class="text-sm text-gray-600">2:00 م - 8:00 م</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Time Slots -->
+                    <div id="timeSlotsContainer" class="hidden mt-4">
+                        <label class="block text-gray-700 font-bold mb-2">اختر الوقت: *</label>
+                        <div id="timeSlots" class="grid grid-cols-3 md:grid-cols-6 gap-2"></div>
+                        <p class="text-sm text-gray-600 mt-2">
+                            <span class="font-bold">المتاح:</span> <span id="availableCount">0</span> / 
+                            <span class="font-bold">الإجمالي:</span> <span id="totalSlots">0</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Visit Reason -->
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">سبب الزيارة: *</label>
+                    <textarea id="visitReason" rows="3" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none" placeholder="اكتب سبب الزيارة هنا..."></textarea>
+                </div>
+
+                <!-- Summary -->
+                <div id="bookingSummary" class="hidden bg-purple-50 rounded-lg p-6">
+                    <h4 class="font-bold text-gray-800 mb-3">ملخص الحجز:</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <p><strong>الاسم:</strong> <span id="summaryName"></span></p>
+                        <p><strong>الهاتف:</strong> <span id="summaryPhone"></span></p>
+                        <p><strong>العيادة:</strong> <span id="summaryClinic"></span></p>
+                        <p><strong>التاريخ:</strong> <span id="summaryDate"></span></p>
+                        <p><strong>الوقت:</strong> <span id="summaryTime"></span></p>
+                        <p><strong>الشيفت:</strong> <span id="summaryShift"></span></p>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex gap-4">
+                    <button onclick="bookAppointment()" class="flex-1 bg-purple-600 text-white py-4 rounded-lg text-xl font-bold hover:bg-purple-700 transition-colors">
+                        📅 تأكيد الحجز
+                    </button>
+                    <a href="index.html" class="flex-1 bg-gray-600 text-white py-4 rounded-lg text-xl font-bold hover:bg-gray-700 text-center transition-colors">
+                        العودة
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center">
+            <svg class="w-20 h-20 mx-auto text-green-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">تم الحجز بنجاح! ✅</h3>
+            <div id="appointmentDetails" class="bg-gray-50 rounded-lg p-4 mb-6 text-right"></div>
+            <p class="text-gray-600 mb-6">يرجى الحضور قبل الموعد بـ 15 دقيقة</p>
+            <div class="flex gap-4">
+                <a href="index.html" class="flex-1 bg-purple-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-purple-700">الرئيسية</a>
+                <button onclick="printAppointment()" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700">طباعة</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyArFKjBYsFhsPyJPJpjLhH2eSEHlUFEzhI",
+            authDomain: "queue-717d5.firebaseapp.com",
+            databaseURL: "https://queue-717d5-default-rtdb.firebaseio.com",
+            projectId: "queue-717d5",
+            storageBucket: "queue-717d5.firebasestorage.app",
+            messagingSenderId: "837806460328",
+            appId: "1:837806460328:web:f2070b93a2784b1b25619d",
+            measurementId: "G-GM30LE46F6"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const firestore = firebase.firestore();
+
+        let selectedSlot = null;
+        let clinicsData = {};
+        let currentAppointment = null;
+
+        window.onload = function() {
+            loadCenterName();
+            loadClinics();
+            
+            // Set min date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('appointmentDate').min = today;
+            
+            // Add event listeners for summary update
+            ['clientName', 'clientPhone'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateSummary);
+            });
+        };
+
+        function loadCenterName() {
+            db.ref('settings/centerName').once('value', (snapshot) => {
+                const name = snapshot.val() || 'المركز الطبي';
+                document.getElementById('centerNameApp').textContent = 'احجز موعدك في ' + name;
+            });
+        }
+
+        async function loadClinics() {
+            db.ref('clinics').once('value', (snapshot) => {
+                const clinics = snapshot.val() || {};
+                clinicsData = clinics;
+                const select = document.getElementById('appointmentClinic');
+                
+                Object.keys(clinics).forEach(id => {
+                    const clinic = clinics[id];
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = clinic.name;
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        // Shift selection visual feedback
+        document.querySelectorAll('.shift-radio').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('.shift-option').forEach(opt => {
+                    opt.classList.remove('border-purple-600', 'bg-purple-50');
+                    opt.classList.add('border-gray-300');
+                });
+                if (this.checked) {
+                    this.nextElementSibling.classList.add('border-purple-600', 'bg-purple-50');
+                    this.nextElementSibling.classList.remove('border-gray-300');
+                }
+            });
+        });
+
+        async function loadTimeSlots() {
+            const clinicId = document.getElementById('appointmentClinic').value;
+            const date = document.getElementById('appointmentDate').value;
+            const shift = document.querySelector('input[name="shift"]:checked')?.value;
+
+            if (!clinicId || !date || !shift) return;
+
+            const container = document.getElementById('timeSlotsContainer');
+            const slotsDiv = document.getElementById('timeSlots');
+            container.classList.remove('hidden');
+            slotsDiv.innerHTML = '<p class="col-span-full text-center text-gray-500">جاري التحميل...</p>';
+
+            try {
+                // Generate time slots
+                const slots = shift === 'صباحي' ? 
+                    generateSlots(9, 14) : // 9am to 2pm
+                    generateSlots(14, 20); // 2pm to 8pm
+
+                // Check existing bookings
+                const bookingsSnap = await firestore.collection('appointments')
+                    .where('clinicId', '==', clinicId)
+                    .where('date', '==', date)
+                    .where('status', '==', 'محجوز')
+                    .get();
+
+                const bookedSlots = new Set();
+                bookingsSnap.forEach(doc => {
+                    bookedSlots.add(doc.data().time);
+                });
+
+                // Get max appointments per day from settings (default 20)
+                const maxPerDay = 20; // يمكن جعلها قابلة للتعديل من صفحة الإدارة
+                const bookedCount = bookedSlots.size;
+                const available = Math.max(0, maxPerDay - bookedCount);
+
+                document.getElementById('availableCount').textContent = available;
+                document.getElementById('totalSlots').textContent = maxPerDay;
+
+                slotsDiv.innerHTML = '';
+                slots.forEach(slot => {
+                    const isBooked = bookedSlots.has(slot) || bookedCount >= maxPerDay;
+                    const div = document.createElement('div');
+                    div.className = `time-slot border-2 rounded-lg p-3 text-center cursor-pointer ${isBooked ? 'disabled border-gray-300 bg-gray-100' : 'border-gray-300 hover:border-purple-600'}`;
+                    div.textContent = slot;
+                    
+                    if (!isBooked) {
+                        div.onclick = () => selectTimeSlot(slot, div);
+                    } else {
+                        div.innerHTML = `${slot}<br><span class="text-xs text-red-600">محجوز</span>`;
+                    }
+                    
+                    slotsDiv.appendChild(div);
+                });
+
+                if (available === 0) {
+                    slotsDiv.innerHTML = '<p class="col-span-full text-center text-red-600 font-bold">عذراً، جميع المواعيد محجوزة في هذا اليوم</p>';
+                }
+            } catch (error) {
+                console.error('Error loading slots:', error);
+                slotsDiv.innerHTML = '<p class="col-span-full text-center text-red-600">خطأ في تحميل المواعيد</p>';
+            }
+        }
+
+        function generateSlots(startHour, endHour) {
+            const slots = [];
+            for (let hour = startHour; hour < endHour; hour++) {
+                slots.push(`${hour.toString().padStart(2, '0')}:00`);
+                slots.push(`${hour.toString().padStart(2, '0')}:30`);
+            }
+            return slots;
+        }
+
+        function selectTimeSlot(slot, element) {
+            // Remove previous selection
+            document.querySelectorAll('.time-slot').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Add selection
+            element.classList.add('selected');
+            selectedSlot = slot;
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const name = document.getElementById('clientName').value;
+            const phone = document.getElementById('clientPhone').value;
+            const clinicId = document.getElementById('appointmentClinic').value;
+            const date = document.getElementById('appointmentDate').value;
+            const shift = document.querySelector('input[name="shift"]:checked')?.value;
+
+            if (name && phone && clinicId && date && selectedSlot && shift) {
+                document.getElementById('bookingSummary').classList.remove('hidden');
+                document.getElementById('summaryName').textContent = name;
+                document.getElementById('summaryPhone').textContent = phone;
+                document.getElementById('summaryClinic').textContent = clinicsData[clinicId]?.name || '';
+                document.getElementById('summaryDate').textContent = new Date(date).toLocaleDateString('ar-EG');
+                document.getElementById('summaryTime').textContent = selectedSlot;
+                document.getElementById('summaryShift').textContent = shift;
+            } else {
+                document.getElementById('bookingSummary').classList.add('hidden');
+            }
+        }
+
+        async function bookAppointment() {
+            const name = document.getElementById('clientName').value;
+            const nationalId = document.getElementById('nationalId').value;
+            const phone = document.getElementById('clientPhone').value;
+            const clinicId = document.getElementById('appointmentClinic').value;
+            const date = document.getElementById('appointmentDate').value;
+            const shift = document.querySelector('input[name="shift"]:checked')?.value;
+            const reason = document.getElementById('visitReason').value;
+
+            if (!name || !nationalId || !phone || !clinicId || !date || !selectedSlot || !shift || !reason) {
+                alert('يرجى ملء جميع الحقول المطلوبة');
+                return;
+            }
+
+            if (nationalId.length !== 14) {
+                alert('الرقم القومي يجب أن يكون 14 رقم');
+                return;
+            }
+
+            try {
+                const clinic = clinicsData[clinicId];
+                
+                const appointmentData = {
+                    clientName: name,
+                    nationalId: nationalId,
+                    phone: phone,
+                    clinicId: clinicId,
+                    clinicName: clinic.name,
+                    date: date,
+                    time: selectedSlot,
+                    slot: `${selectedSlot}-${addMinutes(selectedSlot, 30)}`,
+                    shift: shift,
+                    reason: reason,
+                    status: 'محجوز',
+                    queueNumber: 0,
+                    isUrgent: false,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                const docRef = await firestore.collection('appointments').add(appointmentData);
+                currentAppointment = { id: docRef.id, ...appointmentData };
+                
+                showSuccessModal();
+            } catch (error) {
+                console.error('Error booking:', error);
+                alert('خطأ في الحجز، يرجى المحاولة مرة أخرى');
+            }
+        }
+
+        function addMinutes(time, minutes) {
+            const [h, m] = time.split(':').map(Number);
+            const totalMinutes = h * 60 + m + minutes;
+            const newH = Math.floor(totalMinutes / 60);
+            const newM = totalMinutes % 60;
+            return `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
+        }
+
+        function showSuccessModal() {
+            const detailsDiv = document.getElementById('appointmentDetails');
+            const dateStr = new Date(currentAppointment.date).toLocaleDateString('ar-EG', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            detailsDiv.innerHTML = `
+                <p class="mb-2"><strong>الاسم:</strong> ${currentAppointment.clientName}</p>
+                <p class="mb-2"><strong>العيادة:</strong> ${currentAppointment.clinicName}</p>
+                <p class="mb-2"><strong>التاريخ:</strong> ${dateStr}</p>
+                <p class="mb-2"><strong>الوقت:</strong> ${currentAppointment.time}</p>
+                <p class="mb-2"><strong>الشيفت:</strong> ${currentAppointment.shift}</p>
+                <p class="mb-2"><strong>رقم الحجز:</strong> ${currentAppointment.id.substring(0, 8).toUpperCase()}</p>
+            `;
+            
+            document.getElementById('successModal').classList.remove('hidden');
+        }
+
+        function printAppointment() {
+            window.print();
+        }
+    </script>
+</body>
+</html>
