@@ -11,6 +11,11 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script>
+const firestore = firebase.firestore();
+</script>
+
     <style>
         body { font-family: 'Cairo', sans-serif; }
         .admin-bg { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
@@ -331,6 +336,317 @@
                 </div>
             </div>
 
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">إدارة الأطباء والعاملين</h2>
+        <button onclick="showAddDoctorNew()" class="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 font-bold">
+            ➕ إضافة طبيب جديد
+        </button>
+    </div>
+    
+    <!-- Search and Filter -->
+    <div class="flex gap-4 mb-4">
+        <input type="text" id="searchDoctors" placeholder="بحث بالاسم أو الرقم الوظيفي" 
+               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" onkeyup="searchDoctors()">
+        <select id="filterSpecialty" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="filterDoctors()">
+            <option value="">كل التخصصات</option>
+        </select>
+        <select id="filterStatus" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="filterDoctors()">
+            <option value="">كل الحالات</option>
+            <option value="نشط">نشط</option>
+            <option value="معلق">معلق</option>
+            <option value="مجازة">في إجازة</option>
+        </select>
+    </div>
+
+    <div id="doctorsListNew" class="space-y-3"></div>
+</div>
+
+<!-- Attendance Management -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-4">إدارة الحضور والانصراف</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">اختر الطبيب:</label>
+            <select id="attendanceDoctor" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <option value="">اختر الطبيب</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">التاريخ:</label>
+            <input type="date" id="attendanceDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">وقت الحضور:</label>
+            <input type="time" id="checkInTime" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">وقت الانصراف:</label>
+            <input type="time" id="checkOutTime" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">الحالة:</label>
+            <select id="attendanceStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <option value="حاضر">حاضر</option>
+                <option value="غائب">غائب</option>
+                <option value="إجازة">إجازة</option>
+                <option value="مأمورية">مأمورية</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">الشيفت:</label>
+            <select id="attendanceShift" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <option value="صباحي">صباحي</option>
+                <option value="مسائي">مسائي</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-gray-700 font-bold mb-2">ملاحظات:</label>
+            <input type="text" id="attendanceNotes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="ملاحظات اختيارية">
+        </div>
+    </div>
+
+    <button onclick="saveAttendance()" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-bold">
+        💾 حفظ بيانات الحضور
+    </button>
+
+    <div class="mt-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-3">رفع ملف Excel للحضور الشهري</h3>
+        <div class="flex gap-4">
+            <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">
+            <button onclick="uploadAttendanceExcel()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold">
+                📤 رفع ملف
+            </button>
+        </div>
+        <p class="text-sm text-gray-600 mt-2">* الملف يجب أن يحتوي على: رقم الطبيب، التاريخ، الحضور، الانصراف، الحالة، الشيفت</p>
+    </div>
+</div>
+
+<!-- Requests Management -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">إدارة طلبات العاملين</h2>
+        <div class="flex gap-2">
+            <button onclick="filterAdminRequests('all')" class="admin-filter-btn bg-gray-200 px-4 py-2 rounded-lg font-bold">
+                الكل <span id="countAll">0</span>
+            </button>
+            <button onclick="filterAdminRequests('pending')" class="admin-filter-btn px-4 py-2 rounded-lg font-bold">
+                قيد المراجعة <span id="countPending" class="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs ml-1">0</span>
+            </button>
+            <button onclick="filterAdminRequests('approved')" class="admin-filter-btn px-4 py-2 rounded-lg font-bold">
+                موافق <span id="countApproved">0</span>
+            </button>
+            <button onclick="filterAdminRequests('rejected')" class="admin-filter-btn px-4 py-2 rounded-lg font-bold">
+                مرفوض <span id="countRejected">0</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="adminRequestsList" class="space-y-4"></div>
+</div>
+
+<!-- Complaints and Suggestions -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">الشكاوى والاقتراحات</h2>
+        <div class="flex gap-2">
+            <button onclick="filterComplaints('all')" class="complaint-filter-btn bg-gray-200 px-4 py-2 rounded-lg font-bold">الكل</button>
+            <button onclick="filterComplaints('شكوى')" class="complaint-filter-btn px-4 py-2 rounded-lg font-bold">الشكاوى</button>
+            <button onclick="filterComplaints('اقتراح')" class="complaint-filter-btn px-4 py-2 rounded-lg font-bold">الاقتراحات</button>
+            <button onclick="filterComplaints('new')" class="complaint-filter-btn px-4 py-2 rounded-lg font-bold">
+                جديد <span id="newComplaintsCount" class="bg-red-500 text-white px-2 py-1 rounded-full text-xs ml-1">0</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="complaintsList" class="space-y-4"></div>
+</div>
+
+<!-- Add/Edit Doctor Modal -->
+<div id="doctorModalNew" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+    <div class="bg-white rounded-lg p-8 max-w-3xl w-full mx-4 my-8">
+        <h3 class="text-2xl font-bold text-gray-800 mb-4" id="doctorModalTitleNew">إضافة طبيب جديد</h3>
+        <div class="space-y-4">
+            <input type="hidden" id="editDoctorIdNew">
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">رقم الطبيب الوظيفي:</label>
+                    <input type="text" id="doctorEmployeeNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">الاسم:</label>
+                    <input type="text" id="doctorNameNew" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">رقم الهاتف:</label>
+                    <input type="tel" id="doctorPhoneNew" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">الرقم القومي:</label>
+                    <input type="text" id="doctorNationalId" class="w-full px-4 py-2 border border-gray-300 rounded-lg" maxlength="14">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">التخصص:</label>
+                    <input type="text" id="doctorSpecialtyNew" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">العيادة:</label>
+                    <select id="doctorClinicNew" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">حالة العمل:</label>
+                    <select id="doctorWorkStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="نشط">نشط</option>
+                        <option value="معلق">معلق</option>
+                        <option value="مجازة">في إجازة</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">الشيفت:</label>
+                    <select id="doctorShift" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="صباحي">صباحي</option>
+                        <option value="مسائي">مسائي</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-gray-700 font-bold mb-2">أيام العمل:</label>
+                <div class="grid grid-cols-7 gap-2">
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الأحد">
+                        <span class="text-xs">الأحد</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الإثنين">
+                        <span class="text-xs">الإثنين</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الثلاثاء">
+                        <span class="text-xs">الثلاثاء</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الأربعاء">
+                        <span class="text-xs">الأربعاء</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الخميس">
+                        <span class="text-xs">الخميس</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="الجمعة">
+                        <span class="text-xs">الجمعة</span>
+                    </label>
+                    <label class="flex flex-col items-center gap-1 bg-gray-50 p-2 rounded cursor-pointer hover:bg-gray-100">
+                        <input type="checkbox" class="doctor-day-checkbox-new" value="السبت">
+                        <span class="text-xs">السبت</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">رصيد الإجازات الاعتيادية:</label>
+                    <input type="number" id="doctorRegularLeave" class="w-full px-4 py-2 border border-gray-300 rounded-lg" value="21">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">رصيد الإجازات العارضة:</label>
+                    <input type="number" id="doctorCasualLeave" class="w-full px-4 py-2 border border-gray-300 rounded-lg" value="7">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-gray-700 font-bold mb-2">البريد الإلكتروني:</label>
+                <input type="email" id="doctorEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="doctor@example.com">
+            </div>
+
+            <div id="passwordSection">
+                <label class="block text-gray-700 font-bold mb-2">كلمة السر (للدخول للنظام):</label>
+                <input type="password" id="doctorPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="كلمة سر قوية">
+                <p class="text-xs text-gray-500 mt-1">* سيتم إنشاء حساب للطبيب في Firebase Authentication</p>
+            </div>
+
+            <div>
+                <label class="block text-gray-700 font-bold mb-2">ملاحظات:</label>
+                <textarea id="doctorNotesNew" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="saveDoctorNew()" class="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 font-bold">حفظ</button>
+                <button onclick="closeDoctorModalNew()" class="flex-1 bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold">إلغاء</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Request Review Modal -->
+<div id="requestReviewModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-8 max-w-2xl w-full mx-4">
+        <h3 class="text-2xl font-bold text-gray-800 mb-4">مراجعة الطلب</h3>
+        <div id="requestReviewContent" class="space-y-4 mb-6"></div>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-gray-700 font-bold mb-2">رد الإدارة:</label>
+                <textarea id="adminResponseText" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="اكتب رد الإدارة هنا (اختياري)"></textarea>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="reviewRequest('approve')" class="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-bold">
+                    ✅ الموافقة على الطلب
+                </button>
+                <button onclick="reviewRequest('reject')" class="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 font-bold">
+                    ❌ رفض الطلب
+                </button>
+                <button onclick="closeRequestReviewModal()" class="flex-1 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 font-bold">
+                    إلغاء
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Complaint Response Modal -->
+<div id="complaintResponseModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-8 max-w-2xl w-full mx-4">
+        <h3 class="text-2xl font-bold text-gray-800 mb-4">الرد على الشكوى/الاقتراح</h3>
+        <div id="complaintContent" class="space-y-4 mb-6"></div>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-gray-700 font-bold mb-2">رد الإدارة:</label>
+                <textarea id="complaintResponseText" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="اكتب الرد هنا"></textarea>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="sendComplaintResponse()" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-bold">
+                    📤 إرسال الرد
+                </button>
+                <button onclick="closeComplaintResponseModal()" class="flex-1 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 font-bold">
+                    إلغاء
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+            
             <!-- Appointments Tab -->
             <div id="appointments-tab" class="tab-content hidden">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
